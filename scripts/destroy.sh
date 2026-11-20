@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 과제 확인이 끝난 뒤 비용이 나가지 않도록 전체 리소스를 삭제한다.
 set -euo pipefail
+# Homebrew AWS CLI(Python 3.15)가 시스템 expat 대신 Homebrew expat을 쓰도록
+[ -d /opt/homebrew/opt/expat/lib ] && export DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib
 STAGE="${STAGE:-dev}"
 STACK="jachwi-rag-chatbot-${STAGE}"
 REGION="ap-northeast-2"

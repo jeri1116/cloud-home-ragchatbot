@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 서울 리전(ap-northeast-2)에 인프라를 배포하고 테스트 페이지를 올린다.
 set -euo pipefail
+# Homebrew AWS CLI(Python 3.15)가 시스템 expat 대신 Homebrew expat을 쓰도록
+[ -d /opt/homebrew/opt/expat/lib ] && export DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib
 cd "$(dirname "$0")/.."
 SAM=".venv/bin/sam"
 
