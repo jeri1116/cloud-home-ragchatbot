@@ -1,0 +1,32 @@
+$ aws s3 ls s3://jachwi-rag-docs-480749289512-dev/
+                           PRE pending/
+                           PRE processed/
+                           PRE raw/
+                           PRE reports/
+$ aws s3api get-public-access-block ...
+{
+    "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+    }
+}
+$ aws s3api get-bucket-versioning ...
+{
+    "Status": "Enabled"
+}
+$ aws iam list-role-policies / get-role-policy (Lambda 실행 역할)
+{
+    "Statement": [
+        {
+            "Action": [
+                "dynamodb:PutItem",
+                "dynamodb:Query"
+            ],
+            "Resource": "arn:aws:dynamodb:ap-northeast-2:480749289512:table/jachwi-rag-conversations-dev",
+            "Effect": "Allow"
+        }
+    ]
+}
+AWSXrayWriteOnlyAccess	AWSLambdaBasicExecutionRole

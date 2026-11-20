@@ -14,6 +14,9 @@ ALERT_EMAIL="${ALERT_EMAIL:-}"
 # CloudFront → API Gateway 비밀 헤더 (배포마다 새로 만들어 CloudFront와 Lambda에 같이 반영)
 SECRET="$(openssl rand -hex 24)"
 
+PARAMS=("Stage=$STAGE" "OriginVerifySecret=$SECRET")
+[ -n "$ALERT_EMAIL" ] && PARAMS+=("AlertEmail=$ALERT_EMAIL")
+
 "$SAM" build --template template.yaml
 "$SAM" deploy \
   --stack-name "$STACK" \
@@ -22,7 +25,7 @@ SECRET="$(openssl rand -hex 24)"
   --capabilities CAPABILITY_IAM \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset \
-  --parameter-overrides "Stage=$STAGE" "OriginVerifySecret=$SECRET" "AlertEmail=$ALERT_EMAIL" \
+  --parameter-overrides "${PARAMS[@]}" \
   --tags project=jachwi-rag-chatbot course=cloud-architecture
 
 out() { aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \

@@ -1,0 +1,22 @@
+$ aws cloudformation describe-stacks --stack-name jachwi-rag-chatbot-dev --query "Stacks[0].StackStatus"
+CREATE_COMPLETE
+
+$ aws cloudformation describe-stack-resources (리소스 목록)
+CREATE_COMPLETE  AWS::ApiGateway::Deployment            woq7up
+CREATE_COMPLETE  AWS::ApiGateway::RestApi               143xyn32f5
+CREATE_COMPLETE  AWS::ApiGateway::Stage                 dev
+CREATE_COMPLETE  AWS::CloudFront::Distribution          E388LEYOPXMYH0
+CREATE_COMPLETE  AWS::CloudFront::OriginAccessControl   E3E2VA8UG0JV0P
+CREATE_COMPLETE  AWS::CloudWatch::Alarm                 jachwi-rag-chat-errors-dev
+CREATE_COMPLETE  AWS::CloudWatch::Alarm                 jachwi-rag-chat-latency-dev
+CREATE_COMPLETE  AWS::DynamoDB::Table                   jachwi-rag-conversations-dev
+CREATE_COMPLETE  AWS::IAM::Role                         jachwi-rag-chatbot-dev-ChatFunctionRole-tZ6FyjzMSvVJ
+CREATE_COMPLETE  AWS::Lambda::Function                  jachwi-rag-chat-dev
+CREATE_COMPLETE  AWS::Lambda::Permission                jachwi-rag-chatbot-dev-ChatFunctionChatPermissionStage-YHMOPrbBL
+CREATE_COMPLETE  AWS::Lambda::Permission                jachwi-rag-chatbot-dev-ChatFunctionHealthPermissionStage-usOAAzq
+CREATE_COMPLETE  AWS::Logs::LogGroup                    /aws/lambda/jachwi-rag-chat-dev
+CREATE_COMPLETE  AWS::S3::Bucket                        jachwi-rag-docs-480749289512-dev
+CREATE_COMPLETE  AWS::S3::Bucket                        jachwi-rag-web-480749289512-dev
+CREATE_COMPLETE  AWS::S3::BucketPolicy                  jachwi-rag-docs-480749289512-dev
+CREATE_COMPLETE  AWS::S3::BucketPolicy                  jachwi-rag-web-480749289512-dev
+CREATE_COMPLETE  AWS::SNS::Topic                        arn:aws:sns:ap-northeast-2:480749289512:jachwi-rag-alerts-dev
