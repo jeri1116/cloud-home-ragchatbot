@@ -1,9 +1,9 @@
 ## GET https://d2edk14i39gjpl.cloudfront.net/api/health
-{"status": "ok", "service": "jachwi-rag-chatbot", "version": "0.2.0", "stage": "dev", "region": "ap-northeast-2", "time": "2026-11-20T09:25:53.937057+00:00"}
+{"status": "ok", "service": "jachwi-rag-chatbot", "version": "0.2.0", "stage": "dev", "region": "ap-northeast-2", "time": "2026-11-20T09:29:01.819083+00:00"}
 HTTP 200
 
 ## POST https://d2edk14i39gjpl.cloudfront.net/api/chat
-{"sessionId": "report-test", "answer": "[2주차 연결 테스트] '월세 · 퇴거 · 경기' 상황의 질문을 받았습니다. 아직 공식 자료 검색(RAG)이 연결되지 않아 실제 답변 대신 처리 결과만 보여드립니다.", "maskedQuestion": "퇴거하는데 보증금을 안 줘요. 집주인 번호 [전화번호]", "maskedItems": ["[전화번호]"], "context": {"contractType": "월세", "stage": "퇴거", "region": "경기"}, "sources": [], "stored": {"table": "jachwi-rag-conversations-dev", "ttlDays": 30}, "disclaimer": "법률 자문이 아닌 공식 자료 안내입니다. 구체적인 사안은 대한법률구조공단(132) 등에 상담하세요."}
+{"sessionId": "report-test-2", "answer": "[2주차 연결 테스트] '월세 · 퇴거 · 경기' 상황의 질문을 받았습니다. 아직 공식 자료 검색(RAG)이 연결되지 않아 실제 답변 대신 처리 결과만 보여드립니다.", "maskedQuestion": "퇴거하는데 보증금을 안 줘요. 집주인 번호는 [전화번호]이에요", "maskedItems": ["[전화번호]"], "context": {"contractType": "월세", "stage": "퇴거", "region": "경기"}, "sources": [], "stored": {"table": "jachwi-rag-conversations-dev", "ttlDays": 30}, "disclaimer": "법률 자문이 아닌 공식 자료 안내입니다. 구체적인 사안은 대한법률구조공단(132) 등에 상담하세요."}
 HTTP 200
 
 ## GET https://143xyn32f5.execute-api.ap-northeast-2.amazonaws.com/dev/api/health (CloudFront 우회)

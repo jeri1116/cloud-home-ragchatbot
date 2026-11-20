@@ -3,10 +3,12 @@ test_chat_stores_masked_message (test_app.HandlerTest.test_chat_stores_masked_me
 test_chat_validation (test_app.HandlerTest.test_chat_validation) ... ok
 test_health (test_app.HandlerTest.test_health) ... ok
 test_mask_pii (test_app.HandlerTest.test_mask_pii) ... ok
+test_mask_pii_followed_by_korean (test_app.HandlerTest.test_mask_pii_followed_by_korean) ... ok
+test_mask_pii_keeps_dates (test_app.HandlerTest.test_mask_pii_keeps_dates) ... ok
 test_rejects_without_cloudfront_header (test_app.HandlerTest.test_rejects_without_cloudfront_header) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 0.003s
+Ran 7 tests in 0.003s
 
 OK
 

@@ -28,6 +28,14 @@ class HandlerTest(unittest.TestCase):
         self.assertNotIn("456789", masked)
         self.assertEqual(found, ["[주민등록번호]", "[전화번호]", "[계좌번호]"])
 
+    def test_mask_pii_followed_by_korean(self):
+        masked, found = app.mask_pii("집주인 번호는 010-1234-5678이에요")
+        self.assertEqual(masked, "집주인 번호는 [전화번호]이에요")
+
+    def test_mask_pii_keeps_dates(self):
+        masked, found = app.mask_pii("2026-11-20에 계약했어요")
+        self.assertEqual(found, [])
+
     def test_rejects_without_cloudfront_header(self):
         res = app.handler(event("/api/health", "GET", secret=None), None)
         self.assertEqual(res["statusCode"], 403)

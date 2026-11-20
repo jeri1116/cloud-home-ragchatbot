@@ -58,7 +58,7 @@ def main(site: str, repo: str) -> None:
         ]:
             text = (EVID / src).read_text()
             if src == "curl.txt":
-                text += "\n$ aws dynamodb query --table-name jachwi-rag-conversations-dev (sessionId=report-test)\n"
+                text += "\n$ aws dynamodb query --table-name jachwi-rag-conversations-dev (sessionId=report-test-2)\n"
                 text += (EVID / "dynamodb.json").read_text()
             page.set_content(term_html(title, text))
             page.set_viewport_size({"width": 1100, "height": 400})
