@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  자취방 계약 안내 RAG 챗봇 - 2주차 기본 실행 환경 (서울 리전).
+  S3(문서/프론트엔드) + CloudFront(OAC) + API Gateway + Lambda + DynamoDB + CloudWatch/SNS.
+  Bedrock Knowledge Bases, OpenSearch Serverless, 수집/처리 Lambda는 이후 주차에 추가한다.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: CloudFront가 API Gateway로 보내는 비밀 헤더 값 (CloudFront를 거친 요청만 처리)
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: 오류 알람을 받을 관리자 이메일 (비우면 구독 생략)
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+    Tracing: Active
+
+Resources:
+  # ───────────── 문서 저장소: raw/ · pending/ · processed/ · reports/ ─────────────
+  DocsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub jachwi-rag-docs-${AWS::AccountId}-${Stage}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 365
+
+  DocsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DocsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt DocsBucket.Arn
+              - !Sub ${DocsBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # ───────────── 웹 프론트엔드: 비공개 S3 + CloudFront OAC ─────────────
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub jachwi-rag-web-${AWS::AccountId}-${Stage}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub jachwi-rag-oac-${Stage}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontOACRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub jachwi-rag-chatbot-${Stage}
+        Enabled: true
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        DefaultRootObject: index.html
+        Origins:
+          - Id: web
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: api
+            DomainName: !Sub ${ChatApi}.execute-api.${AWS::Region}.amazonaws.com
+            OriginPath: !Sub /${Stage}
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Verify
+                HeaderValue: !Ref OriginVerifySecret
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+
+  # ───────────── 백엔드 API: API Gateway(REST, 스로틀링) + Lambda ─────────────
+  ChatApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub jachwi-rag-api-${Stage}
+      StageName: !Ref Stage
+      EndpointConfiguration:
+        Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 10
+          ThrottlingBurstLimit: 20
+          MetricsEnabled: true
+
+  ChatFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/jachwi-rag-chat-${Stage}
+      RetentionInDays: 14
+
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub jachwi-rag-chat-${Stage}
+      Description: 질문 처리 Lambda (2주차 - 입력 검사·개인정보 가림·대화 저장, RAG 연결 전)
+      CodeUri: backend/chat/
+      Handler: app.handler
+      LoggingConfig:
+        LogGroup: !Ref ChatFunctionLogGroup
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConversationsTable
+          ORIGIN_VERIFY_SECRET: !Ref OriginVerifySecret
+          STAGE: !Ref Stage
+          CONVERSATION_TTL_DAYS: "30"
+      # 최소 권한: 이 테이블에 대한 쓰기·조회만 허용
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+              Resource: !GetAtt ConversationsTable.Arn
+      Events:
+        Health:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ChatApi
+            Path: /api/health
+            Method: GET
+        Chat:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ChatApi
+            Path: /api/chat
+            Method: POST
+
+  # ───────────── 대화·체크리스트·피드백 저장: DynamoDB (TTL 30일) ─────────────
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub jachwi-rag-conversations-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ───────────── 모니터링: SNS 알람 + CloudWatch 경보 ─────────────
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub jachwi-rag-alerts-${Stage}
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ChatErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub jachwi-rag-chat-errors-${Stage}
+      AlarmDescription: 질문 처리 Lambda 오류 발생
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ChatFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  ChatLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub jachwi-rag-chat-latency-${Stage}
+      AlarmDescription: 질문 처리 Lambda 평균 지연 5초 초과
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ChatFunction
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+Outputs:
+  WebsiteUrl:
+    Description: CloudFront 주소 (테스트 페이지)
+    Value: !Sub https://${Distribution.DomainName}
+  DistributionId:
+    Value: !Ref Distribution
+  ApiInvokeUrl:
+    Description: API Gateway 직접 주소 (CloudFront 비밀 헤더 없으면 403)
+    Value: !Sub https://${ChatApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+  DocsBucketName:
+    Value: !Ref DocsBucket
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+  ConversationsTableName:
+    Value: !Ref ConversationsTable
+  ChatFunctionName:
+    Value: !Ref ChatFunction
+  AlertTopicArn:
+    Value: !Ref AlertTopic

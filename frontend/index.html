@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>자취방 계약 안내 챗봇 · 연결 테스트</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#667085; --line:#e4e7ec; --accent:#2f6fde; --ok:#12805c; --bad:#c4320a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .status { display:flex; align-items:center; gap:8px; font-weight:600; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#aaa; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  dl { display:grid; grid-template-columns: 110px 1fr; gap: 6px 12px; margin: 12px 0 0; font-size: 13px; }
+  dt { color: var(--muted); } dd { margin: 0; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+  .row { display:flex; flex-wrap:wrap; gap: 8px; margin-bottom: 10px; }
+  select, textarea, button { font: inherit; }
+  select { padding: 8px 10px; border:1px solid var(--line); border-radius: 8px; background:#fff; }
+  textarea { width:100%; min-height: 80px; padding: 10px; border:1px solid var(--line); border-radius: 8px; resize: vertical; }
+  button { margin-top: 10px; padding: 10px 18px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .answer { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+  .disclaimer { margin-top: 12px; padding: 10px 12px; background: #fff7e6; border-radius: 8px; font-size: 12px; color: #7a5200; }
+  .err { color: var(--bad); }
+  footer { color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>자취방 계약 안내 챗봇</h1>
+  <p class="sub">2주차 기본 실행 확인 페이지 · CloudFront → API Gateway → Lambda → DynamoDB</p>
+
+  <section class="card">
+    <h2>① 백엔드 상태 (GET /api/health)</h2>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">확인 중…</span></div>
+    <dl id="healthInfo"></dl>
+  </section>
+
+  <section class="card">
+    <h2>② 상황 선택형 질문 (POST /api/chat)</h2>
+    <div class="row">
+      <select id="contractType" aria-label="계약 유형"><option>월세</option><option>반전세</option><option>전세</option></select>
+      <select id="stage" aria-label="단계"><option>집 보기</option><option selected>계약</option><option>입주</option><option>거주</option><option>퇴거</option></select>
+      <select id="region" aria-label="지역"><option>경기</option><option>서울</option><option>전국</option></select>
+    </div>
+    <textarea id="message">계약할 때 집주인 연락처 010-1234-5678 받았는데 확정일자는 언제 받아야 해요?</textarea>
+    <button id="send">질문 보내기</button>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2>③ 응답</h2>
+    <div class="answer" id="answer"></div>
+    <dl id="resultInfo"></dl>
+    <div class="disclaimer" id="disclaimer"></div>
+  </section>
+
+  <footer>한양대학교 ERICA · 클라우드 아키텍처 실습 과제 2</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let sessionId;
+try { sessionId = localStorage.getItem("sessionId"); } catch (e) {}
+if (!sessionId) { sessionId = crypto.randomUUID(); try { localStorage.setItem("sessionId", sessionId); } catch (e) {} }
+
+function fill(dl, pairs) {
+  dl.innerHTML = "";
+  for (const [k, v] of pairs) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    dl.append(dt, dd);
+  }
+}
+
+async function checkHealth() {
+  try {
+    const res = await fetch("/api/health");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    $("dot").className = "dot ok";
+    $("statusText").textContent = "정상 실행 중";
+    fill($("healthInfo"), [["service", data.service], ["version", data.version], ["stage", data.stage], ["region", data.region], ["server time", data.time]]);
+  } catch (e) {
+    $("dot").className = "dot bad";
+    $("statusText").textContent = "연결 실패: " + e.message;
+  }
+}
+
+$("send").addEventListener("click", async () => {
+  $("send").disabled = true;
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, message: $("message").value, contractType: $("contractType").value, stage: $("stage").value, region: $("region").value }),
+    });
+    const data = await res.json();
+    $("resultCard").hidden = false;
+    if (!res.ok) { $("answer").innerHTML = ""; $("answer").append(Object.assign(document.createElement("span"), { className: "err", textContent: data.error })); fill($("resultInfo"), []); $("disclaimer").textContent = ""; return; }
+    $("answer").textContent = data.answer;
+    fill($("resultInfo"), [
+      ["가린 질문", data.maskedQuestion],
+      ["가린 항목", data.maskedItems.join(", ") || "없음"],
+      ["저장 위치", `DynamoDB ${data.stored.table} (TTL ${data.stored.ttlDays}일)`],
+      ["세션 ID", data.sessionId],
+    ]);
+    $("disclaimer").textContent = data.disclaimer;
+  } catch (e) {
+    $("resultCard").hidden = false;
+    $("answer").textContent = "요청 실패: " + e.message;
+  } finally {
+    $("send").disabled = false;
+  }
+});
+
+checkHealth();
+</script>
+</body>
+</html>
