@@ -60,9 +60,18 @@ def main(site: str, repo: str) -> None:
             if src == "curl.txt":
                 text += "\n$ aws dynamodb query --table-name jachwi-rag-conversations-dev (sessionId=report-test-2)\n"
                 text += (EVID / "dynamodb.json").read_text()
-            page.set_content(term_html(title, text))
-            page.set_viewport_size({"width": 1100, "height": 400})
-            page.screenshot(path=str(OUT / name), full_page=True)
+            # 내용 높이를 먼저 잰 뒤 그 높이의 새 창에서 찍는다
+            # (창 크기를 바꾼 직후나 full_page로 찍으면 같은 장면이 반복돼 찍힘)
+            doc = term_html(title, text)
+            probe = browser.new_page(viewport={"width": 1100, "height": 300})
+            probe.set_content(doc)
+            height = probe.evaluate("document.documentElement.scrollHeight")
+            probe.close()
+            shot = browser.new_page(viewport={"width": 1100, "height": height}, device_scale_factor=2)
+            shot.set_content(doc)
+            shot.wait_for_timeout(300)
+            shot.screenshot(path=str(OUT / name))
+            shot.close()
 
         # 6) GitHub 저장소
         page.set_viewport_size({"width": 1280, "height": 900})
